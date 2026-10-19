@@ -1,0 +1,146 @@
+%%writefile sobel_benchmark.cpp
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <omp.h>
+#include <chrono>
+#include <fstream>
+#include <string>
+#include <numeric>
+#include <algorithm>
+
+void runSobel(const std::vector<unsigned char>& input, 
+              std::vector<unsigned char>& output, 
+              int width, int height, int threads, int schedule_type) {
+    int Gx[3][3] = {{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
+    int Gy[3][3] = {{-1, -2, -1}, {0, 0, 0}, {1, 2, 1}};
+
+    omp_set_num_threads(threads);
+
+    if (schedule_type == 0) {
+        #pragma omp parallel for schedule(static) collapse(2)
+        for (int y = 1; y < height - 1; ++y) {
+            for (int x = 1; x < width - 1; ++x) {
+                int sumX = 0, sumY = 0;
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        int pixel = input[(y + ky) * width + (x + kx)];
+                        sumX += pixel * Gx[ky + 1][kx + 1];
+                        sumY += pixel * Gy[ky + 1][kx + 1];
+                    }
+                }
+                int mag = static_cast<int>(std::sqrt(sumX * sumX + sumY * sumY));
+                output[y * width + x] = (mag > 255) ? 255 : mag;
+            }
+        }
+    } else {
+        #pragma omp parallel for schedule(dynamic, 16) collapse(2)
+        for (int y = 1; y < height - 1; ++y) {
+            for (int x = 1; x < width - 1; ++x) {
+                int sumX = 0, sumY = 0;
+                for (int ky = -1; ky <= 1; ++ky) {
+                    for (int kx = -1; kx <= 1; ++kx) {
+                        int pixel = input[(y + ky) * width + (x + kx)];
+                        sumX += pixel * Gx[ky + 1][kx + 1];
+                        sumY += pixel * Gy[ky + 1][kx + 1];
+                    }
+                }
+                int mag = static_cast<int>(std::sqrt(sumX * sumX + sumY * sumY));
+                output[y * width + x] = (mag > 255) ? 255 : mag;
+            }
+        }
+    }
+}
+
+int main() {
+    struct Resolution { std::string name; int width, height; };
+    std::vector<Resolution> resolutions = {
+        {"N=512", 512, 512},
+        {"N=1024", 1024, 1024},
+        {"N=2048", 2048, 2048},
+        {"N=4096", 4096, 4096},
+        {"1080p", 1920, 1080},
+        {"4K", 3840, 2160},
+        {"8K", 7680, 4320}
+    };
+    std::vector<int> thread_counts = {1, 2, 4, 8};
+    const int REPEATS = 10;
+    
+    std::string batch_id = "23BCE0485-23BCE0155-23BCE0077";
+    std::string student_id = "S02"; // Change to your actual student ID if needed
+
+    std::ofstream csv("s02_data.csv");
+    csv << "Batch_ID,Student_ID,Image_Size_Name,Width,Height,Pixels,Threads,Schedule,Median_Time_ms,StdDev_Time_ms,Speedup,Throughput_Pixels_Per_Sec,Memory_MB\n";
+
+    std::cout << "Starting benchmarks...\n";
+
+    for (const auto& res : resolutions) {
+        long long total_pixels = static_cast<long long>(res.width) * res.height;
+        double mem_mb = (total_pixels * 2.0) / (1024.0 * 1024.0);
+
+        std::vector<unsigned char> input(total_pixels);
+        std::vector<unsigned char> output(total_pixels, 0);
+        for (long long i = 0; i < total_pixels; ++i) {
+            input[i] = static_cast<unsigned char>(i % 256);
+        }
+
+        double baseline_time_ms = 0.0;
+
+        for (int sched = 0; sched <= 1; ++sched) {
+            std::string sched_str = (sched == 0) ? "static" : "dynamic";
+
+            for (int threads : thread_counts) {
+                std::vector<double> runs;
+                
+                // Warmup run (-1) and 10 actual runs
+                for (int r = -1; r < REPEATS; ++r) {
+                    auto start = std::chrono::high_resolution_clock::now();
+                    runSobel(input, output, res.width, res.height, threads, sched);
+                    auto end = std::chrono::high_resolution_clock::now();
+                    
+                    if (r >= 0) {
+                        std::chrono::duration<double, std::milli> diff = end - start;
+                        runs.push_back(diff.count());
+                    }
+                }
+
+                // Calculate Mean and StdDev
+                double sum = std::accumulate(runs.begin(), runs.end(), 0.0);
+                double mean = sum / REPEATS;
+                double sq_sum = 0.0;
+                for(double val : runs) sq_sum += (val - mean) * (val - mean);
+                double stddev = std::sqrt(sq_sum / REPEATS);
+
+                // Calculate Median
+                std::sort(runs.begin(), runs.end());
+                double median = (runs[4] + runs[5]) / 2.0;
+
+                if (sched == 0 && threads == 1) baseline_time_ms = median;
+
+                double speedup = baseline_time_ms / median;
+                double throughput = total_pixels / (median / 1000.0);
+
+                csv << batch_id << "," << student_id << "," << res.name << "," << res.width << "," << res.height << ","
+                    << total_pixels << "," << threads << "," << sched_str << ","
+                    << median << "," << stddev << "," << speedup << "," << throughput << "," << mem_mb << "\n";
+
+                std::cout << "Done: " << res.name << " | Threads: " << threads 
+                          << " | Sched: " << sched_str << " | Median: " << median << " ms\n";
+            }
+        }
+    }
+    csv.close();
+    std::cout << "Benchmarks finished. Saved to s02_data.csv\n";
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
