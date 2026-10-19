@@ -1,0 +1,2 @@
+!g++ -O3 -fopenmp sobel_benchmark.cpp -o sobel_benchmark
+!./sobel_benchmark
