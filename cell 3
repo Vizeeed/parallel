@@ -1,0 +1,70 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('s02_data.csv')
+static_df = df[df['Schedule'] == 'static']
+
+# Styling
+plt.rcParams['axes.spines.top'] = False
+plt.rcParams['axes.spines.right'] = False
+plt.rcParams['axes.grid'] = True
+plt.rcParams['grid.alpha'] = 0.3
+plt.rcParams['grid.color'] = '#b0b0b0'
+plt.rcParams['font.size'] = 10
+
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+markers = ['o', 's', '^', 'D', 'v', 'p', '*']
+
+# Fig 1: Median Time vs Pixels
+plt.figure(figsize=(7, 5))
+threads_list = [1, 2, 4, 8]
+for i, threads in enumerate(threads_list):
+    sub = static_df[static_df['Threads'] == threads]
+    plt.plot(sub['Pixels'] / 1e6, sub['Median_Time_ms'], 
+             marker=markers[i], color=colors[i], linewidth=2, 
+             label=f'OpenMP-{threads}')
+plt.yscale('log')
+plt.title('Median execution time vs image size (Sobel)')
+plt.xlabel('Image size (Millions of Pixels)')
+plt.ylabel('Median time (ms)')
+plt.legend(loc='upper left', frameon=False, fontsize=8)
+plt.tight_layout()
+plt.savefig('fig1_time_vs_pixels.png', dpi=300)
+plt.close()
+
+# Fig 2: Speedup vs Threads
+plt.figure(figsize=(7, 5))
+resolutions = static_df['Image_Size_Name'].unique()
+for i, res in enumerate(resolutions):
+    sub = static_df[static_df['Image_Size_Name'] == res]
+    plt.plot(sub['Threads'], sub['Speedup'], 
+             marker=markers[i%len(markers)], color=colors[i%len(colors)], linewidth=2, 
+             label=f'N={res}')
+plt.plot([1, 2, 4, 8], [1, 2, 4, 8], '--', color='grey', linewidth=1, label='ideal')
+plt.xticks([1, 2, 4, 8])
+plt.title('OpenMP speedup vs Sequential (Sobel)')
+plt.xlabel('Threads')
+plt.ylabel('Speedup (x)')
+# Move legend outside so it doesn't cover all the lines
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False, fontsize=8)
+plt.tight_layout()
+plt.savefig('fig2_speedup_vs_threads.png', dpi=300)
+plt.close()
+
+# Fig 3: Throughput vs Resolution
+plt.figure(figsize=(9, 5))
+for i, threads in enumerate(threads_list):
+    sub = static_df[static_df['Threads'] == threads]
+    plt.plot(sub['Image_Size_Name'], sub['Throughput_Pixels_Per_Sec'] / 1e6, 
+             marker=markers[i], color=colors[i], linewidth=2, 
+             label=f'OpenMP-{threads}')
+plt.title('Throughput vs Image Resolution')
+plt.xlabel('Image Resolution')
+plt.ylabel('Throughput (Million Pixels / sec)')
+plt.xticks(rotation=45)
+plt.legend(loc='upper left', frameon=False, fontsize=8)
+plt.tight_layout()
+plt.savefig('fig3_throughput.png', dpi=300)
+plt.close()
+
+print("Professional graphs generated successfully.")
